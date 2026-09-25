@@ -56,4 +56,27 @@ pub const Client = struct {
             .cant_connect_to_peer => |response| .{ .indirect_failure = try self.peers.handleCantConnectToPeer(response) },
         };
     }
+
+    pub fn connectToPeer(self: *Client, username: []const u8) !peer_connections.BeginRequest {
+        if (self.server.state != .authenticated) return error.NotAuthenticated;
+
+        return self.peers.begin(username);
+    }
+
+    pub fn serverConnected(
+        self: *Client,
+    ) !server.OutgoingMessage {
+        const login = try self.server.serverConnected();
+
+        return .{
+            .login = login,
+        };
+    }
+
+    pub fn serverDisconnected(
+        self: *Client,
+    ) !void {
+        try self.server.serverDisconnected();
+        self.peers.reset();
+    }
 };

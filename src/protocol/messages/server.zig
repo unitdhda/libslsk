@@ -69,8 +69,9 @@ pub fn decodeFrame(frame: framing.Frame(u32)) !IncomingMessage {
                 .connect_to_peer = try ConnectToPeerResponse.decode(&reader),
             },
             CantConnectToPeerResponse => .{
-                .cant_connect_to_peer = try CantConnectToPeerRequest.decode(&reader),
+                .cant_connect_to_peer = try CantConnectToPeerResponse.decode(&reader),
             },
+            else => return error.UnknownMessageCode,
         };
 
     if (reader.remaining() != 0) return error.TrailingPayload;
@@ -328,7 +329,7 @@ pub const CantConnectToPeerRequest = struct {
 
     pub const code: u32 = 1001;
 
-    pub fn encodedSize(self: *CantConnectToPeerRequest) error{LengthOverflow}!usize {
+    pub fn encodedSize(self: CantConnectToPeerRequest) error{LengthOverflow}!usize {
         return common.encodedSizeWithStrings(@sizeOf(u32), &.{self.username});
     }
 
@@ -347,7 +348,7 @@ pub const CantConnectToPeerRequest = struct {
 pub const CantConnectToPeerResponse = struct {
     token: u32,
 
-    pub const code: u32 = CantConnectToPeerRequest.code();
+    pub const code: u32 = CantConnectToPeerRequest.code;
 
     pub fn decode(reader: *codec.Reader) !CantConnectToPeerResponse {
         var probe = reader.*;

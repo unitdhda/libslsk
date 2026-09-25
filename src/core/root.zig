@@ -1,7 +1,9 @@
-pub const state = @import("server_connection.zig");
+pub const server = @import("server_connection.zig");
 pub const peers = @import("peer_connections.zig");
+pub const client = @import("client.zig");
 
 test {
-    _ = state;
+    _ = client;
+    _ = server;
     _ = peers;
 }

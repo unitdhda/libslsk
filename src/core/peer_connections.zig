@@ -1,10 +1,11 @@
 const std = @import("std");
 const server = @import("../protocol/messages/server.zig");
 
+pub const Address = struct { ip: u32, port: u32 };
+
 pub const PeerAddress = struct {
     username: []const u8,
-    ip: u32,
-    port: u32,
+    address: Address,
 };
 
 pub const ReverseRequest = struct {
@@ -29,6 +30,7 @@ pub const IndirectFailure = struct {
 };
 
 pub const PeerConnections = struct {
+    allocator: std.mem.Allocator,
     connections: std.StringHashMap(PeerConnection),
     next_token: u32,
 
@@ -36,12 +38,14 @@ pub const PeerConnections = struct {
         allocator: std.mem.Allocator,
     ) PeerConnections {
         return .{
+            .allocator = allocator,
             .connections = std.StringHashMap(PeerConnection).init(allocator),
             .next_token = 1,
         };
     }
 
     pub fn deinit(self: *PeerConnections) void {
+        self.reset();
         self.connections.deinit();
     }
 
@@ -59,8 +63,12 @@ pub const PeerConnections = struct {
             1,
         ) catch return error.TokenExhausted;
 
+        const owned_username = try self.allocator.dupe(u8, username);
+
+        errdefer self.allocator.free(owned_username);
+
         try self.connections.put(
-            username,
+            owned_username,
             .{
                 .outgoing_token = token,
             },
@@ -85,8 +93,10 @@ pub const PeerConnections = struct {
 
         const address: PeerAddress = .{
             .username = response.username,
-            .ip = response.ip,
-            .port = response.port,
+            .address = .{
+                .ip = response.ip,
+                .port = response.port,
+            },
         };
 
         connection.direct_address = address;
@@ -101,21 +111,28 @@ pub const PeerConnections = struct {
         if (response.connection_type != .peer) return error.UnsupportedConnectionType;
         if (response.obfuscation_type != 0) return error.UnsupportedObfuscation;
 
-        const reverse: ReverseRequest = .{ .username = response.username, .token = response.token, .address = .{
-            .username = response.username,
+        const username: []const u8, const connection: *PeerConnection =
+            if (self.connections.getEntry(response.username)) |entry|
+                .{ entry.key_ptr.*, entry.value_ptr }
+            else create: {
+                const owned = try self.allocator.dupe(u8, response.username);
+
+                try self.connections.put(owned, .{});
+
+                break :create .{
+                    owned,
+                    self.connections.getPtr(owned).?,
+                };
+            };
+
+        if (connection.reverse_request != null) return error.ReverseRequestAlreadyExists;
+
+        const reverse: ReverseRequest = .{ .username = username, .token = response.token, .address = .{ .username = response.username, .address = .{
             .ip = response.ip,
             .port = response.port,
-        } };
+        } } };
 
-        const entry = try self.connections.getOrPut(response.username);
-
-        if (!entry.found_existing) {
-            entry.value_ptr.* = .{};
-        } else if (entry.value_ptr.reverse_request != null) {
-            return error.ReverseRequestAlreadyExists;
-        }
-
-        entry.value_ptr.reverse_request = reverse;
+        connection.reverse_request = reverse;
 
         return .{
             .username = response.username,
@@ -134,14 +151,18 @@ pub const PeerConnections = struct {
 
             if (connection.outgoing_token == response.token) {
                 connection.outgoing_token = null;
+                return .{ .username = entry.key_ptr.* };
             }
-
-            return .{ .username = entry.key_ptr.* };
         }
-        return error.UnknownPeerConnection;
+        return error.UnknownPeerToken;
     }
 
     pub fn reset(self: *PeerConnections) void {
+        var iterator = self.connections.iterator();
+
+        while (iterator.next()) |entry| {
+            self.allocator.free(entry.key_ptr.*);
+        }
         self.connections.clearRetainingCapacity();
     }
 };
@@ -180,7 +201,7 @@ test "peer connection lifecycle state is merged per user" {
 
     try std.testing.expectEqual(
         @as(u32, 2234),
-        connection.direct_address.?.port,
+        connection.direct_address.?.address.port,
     );
 
     try std.testing.expectEqual(
@@ -237,7 +258,7 @@ test "peer connection server negotiation" {
 
     try std.testing.expectEqual(
         @as(u32, 2234),
-        connection.direct_address.?.port,
+        connection.direct_address.?.address.port,
     );
 
     try std.testing.expectEqual(

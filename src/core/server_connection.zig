@@ -42,9 +42,10 @@ pub const ServerConnection = struct {
     pub fn serverDisconnected(
         self: *ServerConnection,
     ) !void {
-        if (self.state != .authenticated) return error.InvalidState;
-
-        self.state = .disconnected;
+        switch (self.state) {
+            .logging_in, .authenticated => self.state = .disconnected,
+            .disconnected => return error.InvalidState,
+        }
     }
 
     pub fn handleLogin(
