@@ -77,7 +77,7 @@ pub const ServerConnection = struct {
 // TEST
 //
 
-test "login authenticates server connection" {
+test "server connection login lifecycle" {
     var connection = ServerConnection.init(.{
         .login = .{
             .username = "alice",
@@ -90,33 +90,22 @@ test "login authenticates server connection" {
     });
 
     const login = try connection.serverConnected();
-
-    try std.testing.expectEqualStrings(
-        "alice",
-        login.username,
-    );
+    try std.testing.expectEqualStrings("alice", login.username);
 
     const result = try connection.handleLogin(.{
         .success = .{
-            .greet = "hello",
+            .greet = "",
             .own_ip = 0,
-            .hash = "hash",
+            .hash = "",
             .is_supporter = false,
         },
     });
 
     switch (result) {
-        .authenticated => |request| {
-            try std.testing.expectEqual(
-                @as(u32, 2234),
-                request.port,
-            );
-        },
+        .authenticated => |request| try std.testing.expectEqual(@as(u32, 2234), request.port),
         else => return error.TestUnexpectedResult,
     }
 
-    try std.testing.expectEqual(
-        State.authenticated,
-        connection.state,
-    );
+    try connection.serverDisconnected();
+    try std.testing.expectEqual(State.disconnected, connection.state);
 }

@@ -68,7 +68,7 @@ pub fn decodeFrame(frame: framing.Frame(u32)) !IncomingMessage {
             ConnectToPeerResponse.code => .{
                 .connect_to_peer = try ConnectToPeerResponse.decode(&reader),
             },
-            CantConnectToPeerResponse => .{
+            CantConnectToPeerResponse.code => .{
                 .cant_connect_to_peer = try CantConnectToPeerResponse.decode(&reader),
             },
             else => return error.UnknownMessageCode,
@@ -333,7 +333,7 @@ pub const CantConnectToPeerRequest = struct {
         return common.encodedSizeWithStrings(@sizeOf(u32), &.{self.username});
     }
 
-    pub fn encode(self: *CantConnectToPeerRequest, writer: *codec.Writer) !void {
+    pub fn encode(self: CantConnectToPeerRequest, writer: *codec.Writer) !void {
         const size = try self.encodedSize();
 
         if (writer.remaining() < size) {

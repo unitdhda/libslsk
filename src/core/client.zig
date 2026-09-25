@@ -10,7 +10,7 @@ const PeerConnections = peer_connections.PeerConnections;
 pub const ServerResult = union(enum) {
     authenticated: server.SetWaitPortRequest,
     login_rejected: server.LoginResponse.Failure,
-    peer_address: peer_connections.PeerAddress,
+    peer_address: peer_connections.Address,
     reverse_request: peer_connections.ReverseRequest,
     indirect_failure: peer_connections.IndirectFailure,
 };
@@ -87,3 +87,65 @@ pub const Client = struct {
         self.peers.reset();
     }
 };
+
+//
+// TEST
+//
+
+test "client coordinates server and peer state" {
+    var client = Client.init(
+        std.testing.allocator,
+        .{
+            .login = .{
+                .username = "alice",
+                .password = "secret",
+                .major_version = 177,
+                .hash = "hash",
+                .minor_version = 1,
+            },
+            .wait_port = 2234,
+        },
+    );
+    defer client.deinit();
+
+    const outgoing = try client.serverConnected();
+
+    switch (outgoing) {
+        .login => {},
+        else => return error.TestUnexpectedResult,
+    }
+
+    const login = try client.handleServerMessage(.{
+        .login = .{
+            .success = .{
+                .greet = "",
+                .own_ip = 0,
+                .hash = "",
+                .is_supporter = false,
+            },
+        },
+    });
+
+    switch (login) {
+        .authenticated => {},
+        else => return error.TestUnexpectedResult,
+    }
+
+    _ = try client.connectToPeer("bob");
+
+    try std.testing.expect(
+        client.peers.connections.contains("bob"),
+    );
+
+    try client.serverDisconnected();
+
+    try std.testing.expectEqual(
+        server_connection.State.disconnected,
+        client.server.state,
+    );
+
+    try std.testing.expectEqual(
+        @as(usize, 0),
+        client.peers.connections.count(),
+    );
+}
