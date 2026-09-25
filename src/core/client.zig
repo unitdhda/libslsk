@@ -49,11 +49,18 @@ pub const Client = struct {
         self: *Client,
         message: server.IncomingMessage,
     ) !ServerResult {
-        return switch (message) {
-            .login => |response| self.handleLogin(response),
-            .get_peer_address => |response| .{ .peer_address = try self.peers.handleGetPeerAddress(response) },
-            .connect_to_peer => |response| .{ .reverse_request = try self.peers.handleConnectToPeer(response) },
-            .cant_connect_to_peer => |response| .{ .indirect_failure = try self.peers.handleCantConnectToPeer(response) },
+        return switch (self.server.state) {
+            .disconnected => error.InvalidState,
+            .logging_in => switch (message) {
+                .login => |response| self.handleLogin(response),
+                else => error.UnexpectedMessage,
+            },
+            .authenticated => switch (message) {
+                .login => return error.UnexpectedMessage,
+                .get_peer_address => |response| .{ .peer_address = try self.peers.handleGetPeerAddress(response) },
+                .connect_to_peer => |response| .{ .reverse_request = try self.peers.handleConnectToPeer(response) },
+                .cant_connect_to_peer => |response| .{ .indirect_failure = try self.peers.handleCantConnectToPeer(response) },
+            },
         };
     }
 
